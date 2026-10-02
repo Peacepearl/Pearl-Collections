@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ArrowDownRight, ArrowLeft, ArrowRight, Check, ChevronDown, CreditCard, LockKeyhole, Menu, Minus, Plus, Search, ShoppingBag, X } from 'lucide-react'
-import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DELIVERY_FEE } from './lib/config'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
@@ -273,7 +273,7 @@ function App() {
         <nav className={`main-nav${mobileMenuOpen ? ' mobile-open' : ''}`} aria-label="Main navigation">
           <Link to="/" onClick={() => setMobileMenuOpen(false)}>New arrivals</Link>
           <a href="/#collection" onClick={() => setMobileMenuOpen(false)}>Clothing</a>
-          <a href="/#collection" onClick={() => setMobileMenuOpen(false)}>Accessories</a>
+          <Link to="/?category=Accessories#collection" onClick={() => setMobileMenuOpen(false)}>Accessories</Link>
           <Link to="/about" onClick={() => setMobileMenuOpen(false)}>Our story</Link>
         </nav>
         <div className="header-actions">
@@ -314,13 +314,27 @@ function App() {
 }
 
 function ShopPage({ products, addToCart }: { products: Product[]; addToCart: (product: Product, variant: Variant) => void }) {
-  const [category, setCategory] = useState('All pieces')
+  const categories = ['All pieces', 'Clothing', 'Accessories', 'Jewellery']
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const categoryFromUrl = searchParams.get('category')
+  const initialCategory = categories.find(item => item.toLowerCase() === categoryFromUrl?.toLowerCase()) ?? 'All pieces'
+  const [category, setCategory] = useState(initialCategory)
   const [search, setSearch] = useState('')
   const [size, setSize] = useState('')
   const [gender, setGender] = useState('')
   const [priceBand, setPriceBand] = useState('')
   const [inStockOnly, setInStockOnly] = useState(false)
-  const categories = ['All pieces', 'Clothing', 'Accessories', 'Jewellery']
+  useEffect(() => {
+    const requestedCategory = categories.find(item => item.toLowerCase() === categoryFromUrl?.toLowerCase()) ?? 'All pieces'
+    setCategory(requestedCategory)
+  }, [categoryFromUrl])
+
+  useEffect(() => {
+    if (location.hash !== '#collection') return
+    const frame = window.requestAnimationFrame(() => document.getElementById('collection')?.scrollIntoView({ behavior: 'smooth' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [location.hash, categoryFromUrl])
   const sizes = [...new Set(products.flatMap(product => product.product_variants?.map(variant => variant.size).filter((value): value is string => Boolean(value)) ?? []))].sort()
   const genders = [...new Set(products.map(product => product.gender).filter(Boolean))].sort()
   const filtered = products.filter(product => {
