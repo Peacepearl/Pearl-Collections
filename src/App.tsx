@@ -56,6 +56,7 @@ const sampleProducts: Product[] = [
 
 const money = (amount: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(amount)
 const cartStorageKey = 'pearl-collections-cart'
+const pendingGuestCartKey = 'pearl-collections-pending-guest-cart'
 
 async function getFunctionErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof Error)) return fallback
@@ -138,13 +139,21 @@ function App() {
     let active = true
     setCartHydratedUserId(null)
     const loadAccountCart = async () => {
-      const guestLines = readCart().filter(line => !line.product.id.startsWith('sample-') && !line.variant.id.startsWith('sample-'))
-      if (guestLines.length) {
-        const { error } = await client.rpc('merge_guest_cart', {
-          p_items: guestLines.map(line => ({ variant_id: line.variant.id, quantity: line.quantity })),
-        })
-        if (error) setNotice('Some saved items could not be merged. Please review your bag.')
-        else localStorage.removeItem(cartStorageKey)
+      const pendingGuestCart = localStorage.getItem(pendingGuestCartKey)
+      if (pendingGuestCart) {
+        try {
+          const items = JSON.parse(pendingGuestCart) as Array<{ variant_id: string; quantity: number }>
+          if (items.length) {
+            const { error } = await client.rpc('merge_guest_cart', { p_items: items })
+            if (error) setNotice('Some saved items could not be merged. Please review your bag.')
+            else localStorage.removeItem(pendingGuestCartKey)
+          } else {
+            localStorage.removeItem(pendingGuestCartKey)
+          }
+        } catch {
+          localStorage.removeItem(pendingGuestCartKey)
+          setNotice('Some saved items could not be merged. Please review your bag.')
+        }
       }
 
       const { data, error } = await client.from('cart_items')
@@ -224,11 +233,21 @@ function App() {
       setAuthSetupOpen(true)
       return
     }
+    if (!user) {
+      const guestItems = cart
+        .filter(line => !line.product.id.startsWith('sample-') && !line.variant.id.startsWith('sample-'))
+        .map(line => ({ variant_id: line.variant.id, quantity: line.quantity }))
+      if (guestItems.length) localStorage.setItem(pendingGuestCartKey, JSON.stringify(guestItems))
+      else localStorage.removeItem(pendingGuestCartKey)
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}${location.pathname === '/checkout' ? '/checkout' : '/'}` },
     })
-    if (error) setNotice(error.message)
+    if (error) {
+      localStorage.removeItem(pendingGuestCartKey)
+      setNotice(error.message)
+    }
   }
 
   async function signOut() {
