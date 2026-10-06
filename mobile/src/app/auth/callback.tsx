@@ -13,46 +13,50 @@ export default function AuthCallbackScreen() {
 
   useEffect(() => {
     let active = true
+    let navigated = false
     const first = (value?: string | string[]) => Array.isArray(value) ? value[0] : value
+    const authCode = first(code)
+    const authError = first(errorDescription) || first(error)
+    const completeSignIn = () => {
+      if (!active || navigated) return
+      navigated = true
+      router.replace('/')
+    }
+
+    const subscription = supabase?.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || session) completeSignIn()
+    }).data.subscription
+
+    const timeout = setTimeout(() => {
+      const showTimeoutError = async () => {
+        const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } }
+        if (active && !data.session) {
+          setMessage(authError || 'Sign-in could not be completed. Please try again.')
+        }
+      }
+      void showTimeoutError()
+    }, 8000)
 
     const finishSignIn = async () => {
-      const authError = first(errorDescription) || first(error)
-      if (authError) {
-        if (active) setMessage(authError)
-        return
-      }
-
       if (!supabase) {
-        if (active) setMessage('Sign-in is unavailable. Check your Supabase settings and try again.')
         return
       }
 
       try {
-        const { data: initialData, error: initialError } = await supabase.auth.getSession()
-        if (initialError) throw initialError
-        if (initialData.session) {
-          if (active) router.replace('/')
-          return
-        }
-
-        const authCode = first(code)
-        if (!authCode) throw new Error('The sign-in link did not include a code. Please try again.')
-
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode)
-        if (exchangeError) {
-          // Another handler may have exchanged this same one-time code already.
-          const { data: latestData } = await supabase.auth.getSession()
-          if (!latestData.session) throw exchangeError
-        }
-
-        if (active) router.replace('/')
-      } catch (cause) {
-        if (active) setMessage(cause instanceof Error ? cause.message : 'Sign-in failed. Please try again.')
+        const { data: initialData } = await supabase.auth.getSession()
+        if (initialData.session) completeSignIn()
+        else if (authCode) await supabase.auth.exchangeCodeForSession(authCode)
+      } catch {
+        // The sign-in screen may already be exchanging this one-time code.
       }
     }
 
     void finishSignIn()
-    return () => { active = false }
+    return () => {
+      active = false
+      clearTimeout(timeout)
+      subscription?.unsubscribe()
+    }
   }, [code, error, errorDescription])
 
   return (
