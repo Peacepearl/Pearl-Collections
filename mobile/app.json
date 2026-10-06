@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Pearl Collections",
+    "slug": "pearl-collections",
+    "scheme": "pearlcollections",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.pearlcollections.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2f3fce99-4772-4747-a7bc-2000b62b5229"
+      }
+    }
+  }
+}

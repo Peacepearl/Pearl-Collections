@@ -85,6 +85,8 @@ function App() {
   const [cartSyncing, setCartSyncing] = useState(false)
   const cartSaveQueue = useRef(Promise.resolve())
   const cartSaveVersion = useRef(0)
+  const skipNextCartSave = useRef(false)
+  const cartSyncingRef = useRef(false)
   const [cartOpen, setCartOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [authSetupOpen, setAuthSetupOpen] = useState(false)
@@ -179,10 +181,53 @@ function App() {
   useEffect(() => {
     const client = supabase
     if (!client || !user || cartHydratedUserId !== user.id) return
+    let active = true
+    let refreshTimer: number | undefined
+    const refreshAccountCart = async () => {
+      const { data, error } = await client.from('cart_items')
+        .select('quantity,products(id,name,description,price,category,gender,image_url,is_active),product_variants(id,size,colour,stock_quantity)')
+        .eq('user_id', user.id)
+      if (!active || error || !data) return
+      const lines = data.flatMap(row => {
+        const product = row.products as unknown as Omit<Product, 'product_variants'> | null
+        const variant = row.product_variants as unknown as Variant | null
+        return product && variant ? [{ product: { ...product, product_variants: [variant] }, variant, quantity: row.quantity }] : []
+      })
+      skipNextCartSave.current = true
+      setCart(lines)
+    }
+    const scheduleRefresh = () => {
+      refreshTimer = window.setTimeout(() => {
+        if (!active) return
+        if (cartSyncingRef.current) { scheduleRefresh(); return }
+        void refreshAccountCart()
+      }, 180)
+    }
+    const channel = client.channel(`web-cart-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter: `user_id=eq.${user.id}` }, () => {
+        window.clearTimeout(refreshTimer)
+        scheduleRefresh()
+      })
+      .subscribe()
+    return () => {
+      active = false
+      window.clearTimeout(refreshTimer)
+      void client.removeChannel(channel)
+    }
+  }, [user?.id, cartHydratedUserId])
+
+  useEffect(() => {
+    const client = supabase
+    if (!client || !user || cartHydratedUserId !== user.id) return
+    if (skipNextCartSave.current) {
+      skipNextCartSave.current = false
+      return
+    }
     const items = cart
       .filter(line => !line.product.id.startsWith('sample-') && !line.variant.id.startsWith('sample-'))
       .map(line => ({ variant_id: line.variant.id, quantity: line.quantity }))
     const saveVersion = ++cartSaveVersion.current
+    cartSyncingRef.current = true
     setCartSyncing(true)
     cartSaveQueue.current = cartSaveQueue.current
       .catch(() => undefined)
@@ -197,6 +242,7 @@ function App() {
       })
       .then(error => {
         if (saveVersion !== cartSaveVersion.current) return
+        cartSyncingRef.current = false
         setCartSyncing(false)
         if (error) setNotice('Your bag could not be saved. Please check availability and try again.')
       })
